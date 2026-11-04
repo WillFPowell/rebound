@@ -1,12 +1,31 @@
+import PeerAccount from './PeerAccount';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 const moods = ['Having a hard day', 'Taking it day by day', 'Feeling hopeful'];
 
 const journalKey = 'rebound.journal.v1';
 
+const tabs = ['Today', 'Journal', 'Peer Support'];
+const pageCopy = {
+  Today: ['Recovery has its own pace.', 'Check in with yourself and choose one small goal.'],
+  Journal: ['Your recovery journal', 'Reflect on your week and revisit the moments you pinned.'],
+  'Peer Support': ['Find your people', 'Manage your profile and explore the peer matching preview.'],
+};
+
 export default function App() {
+  const [tab, setTab] = useState('Today');
+  const [showHistory, setShowHistory] = useState(false);
+  const scroll = React.useRef(null);
+  const [title, subtitle] = pageCopy[tab];
+
+  function selectTab(next) {
+    if (next === tab) return;
+    Keyboard.dismiss();
+    setTab(next);
+    scroll.current?.scrollTo({ y: 0, animated: false });
+  }
   const [mood, setMood] = useState(null);
 
   const [note, setNote] = useState('');
@@ -51,47 +70,62 @@ export default function App() {
   }
 
   return (
-    <ScrollView contentInsetAdjustmentBehavior="automatic" style={styles.screen}
-      contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <Text style={styles.brand}>REBOUND</Text>
-      <Text accessibilityRole="header" style={styles.title}>Recovery has its own pace.</Text>
-      <Text style={styles.body}>Take a moment to check in with yourself today.</Text>
-      <View style={styles.card}>
-        <Text accessibilityRole="header" style={styles.heading}>How are you feeling?</Text>
-        {moods.map((option) => (
-          <Pressable key={option} accessibilityRole="button"
-            accessibilityState={{ selected: mood === option }}
-            disabled={saving} onPress={() => setMood(option)}
-            style={[styles.button, mood === option && styles.selected]}>
-            <Text style={[styles.label, mood === option && styles.selectedLabel]}>{option}</Text>
+    <SafeAreaView style={styles.screen}>
+      <ScrollView ref={scroll} style={styles.page}
+        contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <Text style={styles.brand}>REBOUND</Text>
+        <Text accessibilityRole="header" style={styles.title}>{title}</Text>
+        <Text style={styles.body}>{subtitle}</Text>
+        {tab === 'Today' && <View style={styles.card}>
+          <Text accessibilityRole="header" style={styles.heading}>How are you feeling?</Text>
+          {moods.map((option) => (
+            <Pressable key={option} accessibilityRole="button"
+              accessibilityState={{ selected: mood === option }}
+              disabled={saving} onPress={() => setMood(option)}
+              style={[styles.button, mood === option && styles.selected]}>
+              <Text style={[styles.label, mood === option && styles.selectedLabel]}>{option}</Text>
+            </Pressable>
+          ))}
+          <TextInput accessibilityLabel="Optional journal note" placeholder="What stood out today?"
+            multiline maxLength={500} editable={!saving} value={note} onChangeText={setNote}
+            style={[styles.button, styles.note]} />
+          <Pressable accessibilityRole="button" accessibilityState={{ disabled: !canSave }}
+            disabled={!canSave} onPress={saveCheckIn}
+            style={[styles.button, canSave && styles.selected]}>
+            <Text style={[styles.label, canSave && styles.selectedLabel]}>
+              {saving ? 'Saving…' : 'Save check-in'}
+            </Text>
+          </Pressable>
+          {status ? <Text accessibilityLiveRegion="polite" style={styles.body}>{status}</Text> : null}
+        </View>}
+        <RecoveryTools entries={entries} tab={tab} />
+        {tab === 'Journal' && <View style={styles.card}>
+          <Text accessibilityRole="header" style={styles.heading}>Check-in history</Text>
+          <Text style={styles.body}>Check-ins are stored on this device.</Text>
+          {entries?.length === 0 && <Text style={styles.body}>Your saved check-ins will appear here.</Text>}
+          <Action label={showHistory ? 'Hide full history' : 'Show full history'}
+            onPress={() => setShowHistory(!showHistory)} />
+          {showHistory && entries?.map((entry, index) => (
+            <View key={entry.date + index} style={styles.button}>
+              <Text style={styles.body}>{new Date(entry.date).toLocaleString()}</Text>
+              <Text style={styles.label}>{entry.mood}</Text>
+              {entry.note ? <Text style={styles.body}>{entry.note}</Text> : null}
+            </View>
+          ))}
+        </View>}
+        <View style={tab === 'Peer Support' ? undefined : styles.hidden}>
+          <PeerAccount Action={Action} styles={styles} stages={stages} needs={needs} />
+        </View>
+      </ScrollView>
+      <View style={styles.tabBar}>
+        {tabs.map(item => (
+          <Pressable key={item} accessibilityRole="tab" accessibilityState={{ selected: tab === item }}
+            onPress={() => selectTab(item)} style={[styles.tab, tab === item && styles.selected]}>
+            <Text style={[styles.tabLabel, tab === item && styles.selectedLabel]}>{item}</Text>
           </Pressable>
         ))}
-        <TextInput accessibilityLabel="Optional journal note" placeholder="What stood out today?"
-          multiline maxLength={500} editable={!saving} value={note} onChangeText={setNote}
-          style={[styles.button, styles.note]} />
-        <Pressable accessibilityRole="button" accessibilityState={{ disabled: !canSave }}
-          disabled={!canSave} onPress={saveCheckIn}
-          style={[styles.button, canSave && styles.selected]}>
-          <Text style={[styles.label, canSave && styles.selectedLabel]}>
-            {saving ? 'Saving…' : 'Save check-in'}
-          </Text>
-        </Pressable>
-        {status ? <Text accessibilityLiveRegion="polite" style={styles.body}>{status}</Text> : null}
       </View>
-      <View style={styles.card}>
-        <Text accessibilityRole="header" style={styles.heading}>Your journal</Text>
-        <Text style={styles.body}>Check-ins are stored on this device.</Text>
-        {entries?.length === 0 && <Text style={styles.body}>Your saved check-ins will appear here.</Text>}
-        {entries?.map((entry, index) => (
-          <View key={entry.date + index} style={styles.button}>
-            <Text style={styles.body}>{new Date(entry.date).toLocaleString()}</Text>
-            <Text style={styles.label}>{entry.mood}</Text>
-            {entry.note ? <Text style={styles.body}>{entry.note}</Text> : null}
-          </View>
-        ))}
-      </View>
-      <RecoveryTools entries={entries} />
-    </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -121,7 +155,7 @@ function Action({ label, onPress, selected, disabled }) {
   );
 }
 
-function RecoveryTools({ entries }) {
+function RecoveryTools({ entries, tab }) {
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -191,7 +225,7 @@ function RecoveryTools({ entries }) {
   return (
     <>
       {error ? <Text accessibilityLiveRegion="polite" style={styles.body}>{error}</Text> : null}
-      <View style={styles.card}>
+      <View style={tab === 'Today' ? styles.card : styles.hidden}>
         <Text accessibilityRole="header" style={styles.heading}>Today's small goal</Text>
         {goal ? (
           <>
@@ -213,7 +247,7 @@ function RecoveryTools({ entries }) {
         )}
         {nextGoal ? <Text style={styles.body}>Tomorrow: {nextGoal.text}</Text> : null}
       </View>
-      <View style={styles.card}>
+      <View style={tab === 'Journal' ? styles.card : styles.hidden}>
         <Text accessibilityRole="header" style={styles.heading}>Your last 7 days</Text>
         <Text style={styles.body}>{recentEntries.length} check-ins · {wins.length} goals completed</Text>
         {wins.map(([day, item]) => <Text key={day} style={styles.label}>✓ {item.text}</Text>)}
@@ -225,7 +259,7 @@ function RecoveryTools({ entries }) {
           </>
         )}
       </View>
-      <View style={styles.card}>
+      <View style={tab === 'Peer Support' ? styles.card : styles.hidden}>
         <Text accessibilityRole="header" style={styles.heading}>Peer support preview</Text>
         <Text style={styles.body}>Explore how matching could work with fictional profiles. Messages and reports stay in this preview.</Text>
         <Action label={optedIn ? 'Leave preview' : 'Try matching'} onPress={() => setOptedIn(!optedIn)} />
@@ -276,7 +310,12 @@ function PeerPreview({ peer, busy, reported, onReport, onBlock }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#F3F6F2' },
-  content: { padding: 24, paddingTop: 40, gap: 16 },
+  page: { flex: 1 },
+  content: { padding: 20, gap: 16 },
+  hidden: { display: 'none' },
+  tabBar: { flexDirection: 'row', gap: 8, padding: 10, borderTopWidth: StyleSheet.hairlineWidth, borderColor: '#BFCFC4' },
+  tab: { flex: 1, minHeight: 48, justifyContent: 'center', padding: 8, borderRadius: 12 },
+  tabLabel: { textAlign: 'center', color: '#285943', fontWeight: '700' },
   brand: { color: '#285943', fontSize: 15, fontWeight: '800', letterSpacing: 3 },
   title: { color: '#142D23', fontSize: 38, fontWeight: '800' },
   body: { color: '#42554B', fontSize: 16, lineHeight: 24 },
